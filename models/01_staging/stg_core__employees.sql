@@ -1,0 +1,19 @@
+{{    
+  config(
+    materialized='view'
+  )
+}}
+select 
+    EMPLOYEE_ID,
+    EMPLOYEE_NUMBER,
+    FIRST_NAME,
+    LAST_NAME,
+    EMAIL_ADDRESS,
+    JOB_TITLE,
+    DEPARTMENT,
+    BRANCH_ID,
+    HIRE_DATE,
+    EMPLOYMENT_STATUS,
+    PROCESS_DATE
+from
+    {{ source('raw', 'SRC_EMPLOYEES') }}

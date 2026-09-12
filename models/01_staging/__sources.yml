@@ -1,0 +1,28 @@
+version: 2
+
+sources:
+
+  - name: raw
+
+    database: DBT_DEMO_DEV
+
+    schema: raw
+
+    tables:
+
+      - name: SRC_ADDRESSES
+
+      - name: SRC_BRANCHES
+      - name: SRC_CHANNELS
+      - name: SRC_EMPLOYEES
+      - name: SRC_LOANS
+      - name: SRC_LOAN_PRODUCTS
+      - name: SRC_MEMBERS
+
+
+  
+
+
+
+
+

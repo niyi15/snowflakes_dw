@@ -1,0 +1,19 @@
+{{
+    config(
+        materialized='view'
+    )
+}}
+select
+    MEMBER_ID,
+    MEMBER_NUMBER,
+    FIRST_NAME,
+    LAST_NAME,
+    DATE_OF_BIRTH,
+    EMAIL_ADDRESS,
+    PHONE_NUMBER,
+    MEMBER_SINCE_DATE,
+    MEMBER_STATUS,
+    PRIMARY_BRANCH_ID,
+    PROCESS_DATE
+from
+    {{source('raw', 'SRC_MEMBERS') }}
