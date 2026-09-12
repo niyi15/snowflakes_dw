@@ -17,3 +17,4 @@ select
     PROCESS_DATE
 from
     {{ source('raw', 'SRC_EMPLOYEES') }}
+    
