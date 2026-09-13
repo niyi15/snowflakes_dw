@@ -1,0 +1,19 @@
+{{    
+  config(
+    materialized='view'
+  )
+}}
+select 
+    ADDRESS_ID,
+    MEMBER_ID,
+    ADDRESS_TYPE,
+    ADDRESS_LINE_1,
+    ADDRESS_LINE_2,
+    CITY,
+    STATE_CODE,
+    ZIP_CODE,
+    COUNTRY_CODE,
+    PRIMARY_FLAG,
+    PROCESS_DATE
+from
+    {{ source('raw', 'SRC_ADDRESSES') }}
