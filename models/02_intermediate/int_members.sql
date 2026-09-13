@@ -1,4 +1,4 @@
 {{config(
-    materialized = 'view'
+    materialized = 'table'
 )}}
 select * from {{ ref('stg_core__members')}}
