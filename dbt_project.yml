@@ -35,8 +35,18 @@ clean-targets:         # directories to be removed by `dbt clean`
 # continue to be built as views. These settings can be overridden in the individual model files
 # using the `{{ config(...) }}` macro.
 
+    
 models:
   snowflakes_dw:
-    # Applies to all files under models/example/
     01_staging:
+      +schema: BRONZE
       +materialized: view
+
+    02_intermediate:
+      +schema: SILVER
+
+    03_marts:
+      +schema: MART
+
+    04_gold:
+      +schema: GOLD
