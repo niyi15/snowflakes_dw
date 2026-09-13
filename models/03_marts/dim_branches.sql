@@ -1,5 +1,6 @@
 -- dim_branches.sql
 
+
 {{ config(materialized='table') }}
 
 select *
