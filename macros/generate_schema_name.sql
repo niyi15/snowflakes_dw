@@ -1,9 +1,13 @@
-{% macro generate_schema_name(custom_schema_name, node) %}
+{% macro generate_schema_name(custom_schema_name, node) -%}
 
-    {% if custom_schema_name is none %}
-        {{ target.schema }}
-    {% else %}
-        {{ custom_schema_name | trim }}
-    {% endif %}
+    {%- if target.name in ['dev','stag','prod'] -%}
 
-{% endmacro %}
+        {{ custom_schema_name }}
+
+    {%- else -%}
+
+        {{ target.schema ~ '_' ~ custom_schema_name }}
+
+    {%- endif -%}
+
+{%- endmacro %}
