@@ -378,3 +378,19 @@ Launch `file_to_dbt_cloud_job` manually or use `file_to_dbt_cloud_daily_7am`. It
 The `dbt_validation` group contains `dbt_tests`, which depends on `trigger_dbt_cloud_job`. Launch `file_to_dbt_cloud_and_tests_job` to execute `simulated_file_move` → `trigger_dbt_cloud_job` → `dbt_tests` in one run. The existing `file_to_dbt_cloud_daily_7am` schedule now targets this combined job, retaining 7 AM America/New_York and default RUNNING status. The original file-only job remains available for manual use.
 
 The first two assets simulate work. The final asset runs **real `dbt test`** through the existing dbt CLI resource, against the database configured in the repository profile. It tests the entire dbt project; it does not build models, so their database relations must already exist. A failed test fails the asset and job. SQL Server runtime libraries and the runtime DBT_* variables are required. Since the preceding Cloud trigger is simulated, no Cloud run or model build actually occurs before these tests.
+
+## Independent file-processing code location
+
+`file_pipeline/` is a separate Python project with no dbt dependency or profile requirement. The root `dagster_cloud.yaml` registers it as a second code location named `file_pipeline`, using `file_pipeline/pyproject.toml` as its dependency/build root. Existing workflows deploy all configured locations; the shared workflow still prepares the original dbt project and uploads its ODBC base image, so its existing build secrets remain necessary. The sample package itself only requires Dagster and dagster-cloud.
+
+In Dagster+, launch `file_processing_job` in the `file_pipeline` location. Its `file_processing` group runs `download_file` → `process_file`. The download is simulated using a sample CSV; the processing is real Python CSV parsing and uppercase name normalization. Data passes through Dagster's IO manager rather than a machine-local path. There are no external API calls or credentials. The `file_processing_daily_7am` schedule runs this job daily at 7 AM America/New_York (`0 7 * * *`) with default status RUNNING. A saved Dagster+ schedule toggle overrides the code default.
+
+To develop only this location locally, from the repository root with your virtual environment active:
+
+```powershell
+python -m pip install -e ".\file_pipeline[dev]"
+cd .\file_pipeline
+dagster dev
+```
+
+Commit the new package and root deployment configuration, then push to deploy. This is an independent code location, not another asset group inside the dbt location. The existing dbt location remains configured separately.

@@ -3,3 +3,8 @@ locations:
     working_directory: ./dbt_dagster
     code_source:
       module_name: dbt_dagster.definitions
+  - location_name: file_pipeline
+    build:
+      directory: ./file_pipeline
+    code_source:
+      module_name: file_pipeline.definitions

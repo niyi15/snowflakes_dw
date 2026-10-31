@@ -1,0 +1,9 @@
+load_from:
+  - python_module:
+      module_name: dbt_dagster.definitions
+      working_directory: ./dbt_dagster
+      location_name: dbt_dagster
+  - python_module:
+      module_name: file_pipeline.definitions
+      working_directory: ./file_pipeline
+      location_name: file_pipeline
