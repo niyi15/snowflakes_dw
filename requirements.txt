@@ -1,0 +1,2 @@
+# Install the Dagster package and its declared production dependencies.
+./dbt_dagster

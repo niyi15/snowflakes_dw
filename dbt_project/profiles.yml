@@ -1,0 +1,15 @@
+snowflakes_dw:
+  target: prod
+  outputs:
+    prod:
+      type: sqlserver
+      driver: "ODBC Driver 18 for SQL Server"
+      server: "{{ env_var('DBT_SERVER') }}"
+      port: 1433
+      database: "{{ env_var('DBT_DATABASE') }}"
+      schema: "{{ env_var('DBT_SCHEMA') }}"
+      user: "{{ env_var('DBT_USER') }}"
+      password: "{{ env_var('DBT_PASSWORD') }}"
+      encrypt: true
+      trust_cert: false
+      threads: 4
