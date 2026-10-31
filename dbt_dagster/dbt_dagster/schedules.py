@@ -6,8 +6,8 @@ schedules = [
     ScheduleDefinition(
         name="members_every_five_minutes",
         job=members_job,
-        cron_schedule="*/5 * * * *",
+        cron_schedule="0 6 * * *",
         execution_timezone="America/New_York",
-        default_status=DefaultScheduleStatus.RUNNING,
+        default_status=DefaultScheduleStatus.STOPPED,
     ),
 ]
