@@ -4,7 +4,7 @@ sources:
 
   - name: raw
 
-    database: DBT_DEMO_DEV
+    database: psecu_db
 
     schema: raw
 
