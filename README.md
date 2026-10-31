@@ -1,4 +1,4 @@
-﻿# dbt and Dagster setup
+# dbt and Dagster setup
 
 These instructions use Windows PowerShell. Run the commands in order. The repository contains an existing dbt project (`dbt_project`) and Dagster project (`dbt_dagster`); neither needs to be scaffolded again.
 
@@ -366,3 +366,15 @@ This automation applies to the existing fast Python-executable path (`ENABLE_FAS
 If changing Python versions, update both the Dockerfile and workflow `PYTHON_VERSION`. Keep the Dagster Cloud CLI/runtime versions coordinated with the deployment action. If the upload output format changes, the tag extraction fails rather than deploying on an unintended base image.
 
 Reference: [Dagster+ custom Serverless base images](https://dagster.io/docs/deployment/dagster-plus/serverless/runtime-environment#use-a-different-base-image).
+
+### Simulated file handoff and dbt Cloud API group
+
+The `file_to_dbt_cloud` group contains `simulated_file_move` followed by `trigger_dbt_cloud_job`. Both are simulations: no file is moved and no API is called. The Cloud step reports dummy account ID `12345`, job ID `67890`, run ID `100001`, and status `SIMULATED_SUCCESS`. No dbt Cloud credentials or environment variables are required.
+
+Launch `file_to_dbt_cloud_job` manually or use `file_to_dbt_cloud_daily_7am`. Its cron is `0 7 * * *`, timezone `America/New_York`, and default status `RUNNING`. It runs daily at 7 AM local time, adjusting for daylight saving time. Any saved on/off state in Dagster+ overrides the code default. The existing members schedule is unchanged.
+
+### dbt validation after the simulated handoff
+
+The `dbt_validation` group contains `dbt_tests`, which depends on `trigger_dbt_cloud_job`. Launch `file_to_dbt_cloud_and_tests_job` to execute `simulated_file_move` → `trigger_dbt_cloud_job` → `dbt_tests` in one run. The existing `file_to_dbt_cloud_daily_7am` schedule now targets this combined job, retaining 7 AM America/New_York and default RUNNING status. The original file-only job remains available for manual use.
+
+The first two assets simulate work. The final asset runs **real `dbt test`** through the existing dbt CLI resource, against the database configured in the repository profile. It tests the entire dbt project; it does not build models, so their database relations must already exist. A failed test fails the asset and job. SQL Server runtime libraries and the runtime DBT_* variables are required. Since the preceding Cloud trigger is simulated, no Cloud run or model build actually occurs before these tests.

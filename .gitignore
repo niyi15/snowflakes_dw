@@ -7,3 +7,4 @@ dbt_internal_packages/
 venv
 .venv312/
 __pycache__/
+.env
