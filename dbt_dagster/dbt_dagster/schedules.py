@@ -1,15 +1,13 @@
-"""
-To add a daily schedule that materializes your dbt assets, uncomment the following lines.
-"""
-from dagster_dbt import build_schedule_from_dbt_selection
+from dagster import DefaultScheduleStatus, ScheduleDefinition
 
-from .assets import dbt_project_dbt_assets
+from .jobs import members_job
 
 schedules = [
-#     build_schedule_from_dbt_selection(
-#         [dbt_project_dbt_assets],
-#         job_name="materialize_dbt_models",
-#         cron_schedule="0 0 * * *",
-#         dbt_select="fqn:*",
-#     ),
+    ScheduleDefinition(
+        name="members_every_five_minutes",
+        job=members_job,
+        cron_schedule="*/5 * * * *",
+        execution_timezone="America/New_York",
+        default_status=DefaultScheduleStatus.RUNNING,
+    ),
 ]

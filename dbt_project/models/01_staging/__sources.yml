@@ -4,7 +4,7 @@ sources:
 
   - name: raw
 
-    database: psecu_db
+    database: "{{ target.database }}"
 
     schema: raw
 
