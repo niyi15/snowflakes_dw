@@ -40,6 +40,26 @@ jobs:
           ref: ${{ github.head_ref }}
           path: project-repo
 
+      - name: Set up Python for dbt manifest
+        if: steps.prerun.outputs.result == 'pex-deploy'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Generate dbt manifest
+        if: steps.prerun.outputs.result == 'pex-deploy'
+        working-directory: project-repo
+        env:
+          DBT_SERVER: ${{ secrets.DBT_SERVER }}
+          DBT_DATABASE: ${{ secrets.DBT_DATABASE }}
+          DBT_SCHEMA: ${{ secrets.DBT_SCHEMA }}
+          DBT_USER: ${{ secrets.DBT_USER }}
+          DBT_PASSWORD: ${{ secrets.DBT_PASSWORD }}
+        run: |
+          python -m pip install -r requirements.txt
+          dbt parse --project-dir dbt_project --profiles-dir dbt_project
+          test -s dbt_project/target/manifest.json
+
       - name: Python Executable Deploy
         if: steps.prerun.outputs.result == 'pex-deploy'
         uses: dagster-io/dagster-cloud-action/actions/build_deploy_python_executable@v1.13.28
