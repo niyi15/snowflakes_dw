@@ -8,7 +8,7 @@ concurrency:
   group: ${{ github.ref }}/branch_deployments
   cancel-in-progress: true
 env:
-  DAGSTER_CLOUD_URL: "http://seriqcare.dagster.cloud"
+  DAGSTER_CLOUD_URL: "https://seriqcare.dagster.cloud"
   DAGSTER_CLOUD_API_TOKEN: ${{ secrets.DAGSTER_CLOUD_API_TOKEN }}
   ENABLE_FAST_DEPLOYS: 'true'
   PYTHON_VERSION: '3.10'
@@ -59,6 +59,34 @@ jobs:
           python -m pip install -r requirements.txt
           dbt parse --project-dir dbt_project --profiles-dir dbt_project
           test -s dbt_project/target/manifest.json
+
+      - name: Build SQL Server runtime image
+        if: steps.prerun.outputs.result == 'pex-deploy'
+        run: |
+          docker build --platform linux/amd64 \
+            -f project-repo/Dockerfile.serverless-base \
+            -t dagster-sqlserver-base:ci project-repo
+
+      - name: Upload SQL Server runtime image
+        if: steps.prerun.outputs.result == 'pex-deploy'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install "dagster-cloud[serverless]==1.13.28"
+          dagster-cloud serverless upload-base-image dagster-sqlserver-base:ci 2>&1 | tee "$RUNNER_TEMP/base-image-upload.log"
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+          output = (Path(os.environ['RUNNER_TEMP']) / 'base-image-upload.log').read_text()
+          tags = set(re.findall(r'sha256_[a-fA-F0-9]{64}', output))
+          if len(tags) != 1:
+              raise SystemExit('Expected one Dagster+ base image tag in upload output; inspect upload logs.')
+          tag = tags.pop()
+          with open(os.environ['GITHUB_ENV'], 'a') as env:
+              env.write(f'SERVERLESS_BASE_IMAGE_TAG={tag}\n')
+          print(f'Using Serverless base image: {tag}')
+          PY
 
       - name: Python Executable Deploy
         if: steps.prerun.outputs.result == 'pex-deploy'

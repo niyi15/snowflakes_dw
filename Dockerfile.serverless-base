@@ -1,0 +1,18 @@
+FROM python:3.10-slim-bookworm
+
+# Install the Linux driver manager and Microsoft SQL Server ODBC driver.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates curl unixodbc libodbc2 libgssapi-krb5-2 \
+    && curl -fsSL https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb \
+        -o /tmp/packages-microsoft-prod.deb \
+    && dpkg -i /tmp/packages-microsoft-prod.deb \
+    && apt-get update \
+    && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 \
+    && rm -f /tmp/packages-microsoft-prod.deb \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python -m pip install --no-cache-dir "dagster-cloud[serverless]==1.13.28" pyodbc
+
+# Fail the image build if the runtime cannot load the required driver.
+RUN python -c "import pyodbc; assert 'ODBC Driver 18 for SQL Server' in pyodbc.drivers(), pyodbc.drivers(); print(pyodbc.drivers())"

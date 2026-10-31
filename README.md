@@ -196,3 +196,173 @@ Then install the generated project with its `dev` extra and configure `profiles_
 - **Invalid --dbt-project-dir:** point to `snowflakes_dw\dbt_project`, the directory containing `dbt_project.yml`.
 - **DAGSTER_HOME directory missing:** create the directory before starting Dagster and set the variable in the same terminal.
 - **Database connection errors:** run `dbt debug` from `dbt_project`; check the profile, ODBC driver, credentials, and database access.
+
+## Production deployment to Dagster+
+
+Azure DevOps uses the same build stages as GitHub Actions: check out the source, install dependencies, provide build-time environment variables, generate the dbt manifest, package the source, and deploy a code location. The pipeline YAML, secret storage, and deployment invocation differ; GitHub `uses:` actions cannot be copied directly into an Azure pipeline.
+
+### Code location and repository layout
+
+A code location loads this project's Dagster definitions, assets, resources, and schedules. It is not the database connection. Use **Import a Dagster project** in Dagster+, because this repository already contains a Dagster package.
+
+Keep these paths together in the deployment artifact:
+
+```text
+snowflakes_dw/
+├── dagster_cloud.yaml
+├── requirements.txt
+├── dbt_project/
+│   ├── dbt_project.yml
+│   ├── profiles.yml
+│   ├── models/
+│   └── target/manifest.json    # generated in CI, not committed
+└── dbt_dagster/
+    ├── pyproject.toml
+    └── dbt_dagster/
+        ├── definitions.py
+        ├── project.py
+        ├── assets.py
+        └── schedules.py
+```
+
+The root `dagster_cloud.yaml` identifies the code location:
+
+```yaml
+locations:
+  - location_name: dbt_dagster
+    working_directory: ./dbt_dagster
+    code_source:
+      module_name: dbt_dagster.definitions
+```
+
+`working_directory` controls loading the Python module. It does not change the dependency build root. The root `requirements.txt` installs `./dbt_dagster`, whose `pyproject.toml` declares the Python dependencies, including `dagster-cloud`. Do not repeat every dependency in both files.
+
+### Production database profile and secrets
+
+The deployed profile is `dbt_project/profiles.yml`. Commit only environment-variable references, never real credentials. The top-level profile name must match `profile: snowflakes_dw` in `dbt_project.yml`. Its selected target/output determines the connection dbt uses; the Dagster+ deployment name `prod` does not automatically select a dbt target named `prod`.
+
+Provide the variables referenced by the profile:
+
+| Variable | Meaning |
+| --- | --- |
+| `DBT_SERVER` | Production SQL Server hostname |
+| `DBT_DATABASE` | Production database |
+| `DBT_SCHEMA` | Base target schema; model and macro configuration can alter final model schemas |
+| `DBT_USER` | Database service account |
+| `DBT_PASSWORD` | Database service account password |
+
+For example, the profile's server setting is `server: "{{ env_var('DBT_SERVER') }}"`.
+
+Set runtime variables in **Dagster+ → select prod → Deployment → Environment variables**, scoped to `dbt_dagster` where applicable. Reload the code location after saving.
+
+Set the same required variables separately in CI. Dagster+ runtime variables are not automatically available to the GitHub or Azure build agent. Production credentials should be scoped to trusted production pipelines; use separate credentials and database/schema settings for branch deployments.
+
+The current `project.py` points `profiles_dir` to the repository's `dbt_project` folder. Your laptop's `C:\Users\olada\.dbt\profiles.yml` is not uploaded to Dagster+.
+
+### Generate and include the manifest
+
+Dagster reads `manifest.json` to define the dbt assets before running a materialization. `prepare_if_dev()` generates it during local development, but production requires it to be prepared during the build.
+
+The current GitHub Python-executable deployment workflows run these commands from the checked-out repository root before deployment:
+
+```bash
+python -m pip install -r requirements.txt
+dbt parse --project-dir dbt_project --profiles-dir dbt_project
+test -s dbt_project/target/manifest.json
+```
+
+`dbt parse` generates metadata; it does not build database tables. It still requires values for environment variables referenced by the profile. If external dbt packages are added later, install them with `dbt deps` before parsing.
+
+Keep `target/` ignored in Git. Include the generated manifest, dbt models, macros, and profile in the deployment artifact after generation. A clean checkout in a later job will not contain the generated manifest: publish/download the prepared artifact between jobs or generate it again before packaging.
+
+Dagster also provides `dagster-dbt project prepare-and-package --file path/to/project.py`. Use it when configuring a distinct packaged dbt directory and ensuring that directory is shipped. The current workflows use `dbt parse` directly and preserve the repository layout; changing packaging paths requires matching changes to `project.py` and the artifact contents.
+
+See [Dagster's dbt production deployment guidance](https://dagster.io/docs/integrations/libraries/dbt/reference#deploying-a-dagster-project-with-a-dbt-project).
+
+### GitHub Actions production deployment
+
+1. Add `DAGSTER_CLOUD_API_TOKEN` and the five `DBT_*` values in **GitHub repository → Settings → Secrets and variables → Actions**.
+2. Configure the runtime `DBT_*` values in Dagster+ too.
+3. Push the deployment files, profile template, Python code, and dbt code to the configured production branch.
+4. `.github/workflows/deploy.yml` installs dependencies and generates the manifest before its Python-executable deployment action.
+5. Check **Dagster+ → Deployment → Code locations** for a successfully loaded `dbt_dagster` location.
+6. Materialize a small asset first, check database outputs and tests, then enable the intended schedule. The scaffold's schedule list is initially empty.
+
+The manifest-generation additions currently cover the Python-executable path. If switching to the Docker path, generate the manifest during the image build or before copying prepared source into the image.
+
+### Azure DevOps equivalent
+
+Use an Azure Pipeline with the same stages. Store credentials as secret pipeline variables, in a variable group, or through an approved Key Vault integration. Map secret variables explicitly into the build step's environment. Supply the Dagster+ API token separately to the deployment step.
+
+This example is the **manifest preparation stage only**, not a complete deployment pipeline:
+
+```yaml
+pool:
+  vmImage: ubuntu-22.04
+
+steps:
+  - checkout: self
+
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.10'
+
+  - bash: |
+      set -euo pipefail
+      python -m pip install -r requirements.txt
+      dbt parse --project-dir dbt_project --profiles-dir dbt_project
+      test -s dbt_project/target/manifest.json
+    workingDirectory: $(Build.SourcesDirectory)
+    displayName: Install dependencies and generate dbt manifest
+    env:
+      DBT_SERVER: $(DBT_SERVER)
+      DBT_DATABASE: $(DBT_DATABASE)
+      DBT_SCHEMA: $(DBT_SCHEMA)
+      DBT_USER: $(DBT_USER)
+      DBT_PASSWORD: $(DBT_PASSWORD)
+```
+
+After this stage, add deployment using the Dagster Cloud CLI or your chosen container deployment process. Configure the Dagster+ organization, deployment (`prod`), API token, code location configuration, and artifact/image. The existing GitHub deployment uses Python 3.10; keep build and runtime Python versions aligned if changing that version.
+
+For Serverless, build and upload an artifact using the supported Dagster Cloud CLI workflow. For Hybrid, build and push a container image and update the code location to that image; a running Hybrid agent must be able to pull and launch it. These are different deployment mechanisms, so finalize the deploy stage for the selected mode rather than reusing GitHub action syntax in Azure.
+
+### SQL Server runtime and networking
+
+The production runtime needs the Microsoft ODBC driver specified by `profiles.yml`, in addition to the pip-installed `dbt-sqlserver` adapter. Installing the driver on the CI agent does not install it in the deployed runtime. If using a container, install the driver in the image.
+
+The runtime must also resolve and reach SQL Server and use an authentication method supported in that environment. A VPN or Windows login working on your laptop does not grant access to a hosted Linux runtime. For a database inside a private company network, evaluate Hybrid with an agent inside the approved network, or an approved Serverless connectivity arrangement.
+
+`DAGSTER_HOME` from the local setup is not uploaded to Dagster+. Dagster+ manages deployment state; Hybrid additionally needs its own agent configuration.
+
+### Production error checklist
+
+| Error | Check |
+| --- | --- |
+| No setup.py, requirements.txt, or pyproject.toml | Build root contains `requirements.txt`, and `./dbt_dagster` exists |
+| DagsterDbtManifestNotFoundError | Parse ran before packaging, manifest is in the uploaded artifact, and `project.py` points to that directory |
+| Missing environment variable | Configure the variable separately in CI and Dagster+ runtime |
+| profiles.yml not found | Ship the profile template and match its directory to `profiles_dir` |
+| SQL Server driver cannot be loaded | Install the matching ODBC driver in the runtime, not just the CI agent |
+| Login failure or connection timeout | Check production credentials, authentication, DNS, firewall, routing, and database permissions |
+
+### Automated ODBC runtime image in GitHub Actions
+
+`Dockerfile.serverless-base` defines a Linux AMD64 Python 3.10 image with unixODBC, Microsoft ODBC Driver 18 for SQL Server, and `dagster-cloud[serverless]`. Its build verifies that `pyodbc` can load and discover the driver. Installing the Microsoft driver uses `ACCEPT_EULA=Y` to accept its license terms.
+
+For the current Python-executable deployment path, both GitHub workflows now:
+
+1. Generate the dbt manifest using the existing build secrets.
+2. Build `Dockerfile.serverless-base` on the hosted Ubuntu runner.
+3. Upload the base image using `dagster-cloud serverless upload-base-image` and the existing `DAGSTER_CLOUD_API_TOKEN`.
+4. Extract the returned `sha256_...` image tag and export `SERVERLESS_BASE_IMAGE_TAG` for the subsequent deployment action.
+5. Deploy the project's Python code and prepared manifest on that image.
+
+Commit and push the Dockerfile and workflow changes. Docker Desktop and a manual image upload are not required. The runner supplies Docker, and no additional Docker Hub credentials or private image registry are needed for this upload process. The Dagster+ API token must have permission to upload the image and deploy code.
+
+The base image is rebuilt/uploaded on each eligible deployment. It contains libraries only: repository code and database credentials are not copied into it. Keep the runtime `DBT_*` variables configured in Dagster+ and build variables in GitHub Actions. For pull requests, continue to use trusted branch workflows and separate branch database settings.
+
+This automation applies to the existing fast Python-executable path (`ENABLE_FAST_DEPLOYS: 'true'`). Switching to the workflow's separate Docker deployment path requires adapting that path; this Dockerfile is a base image, not a standalone image containing the full project.
+
+If changing Python versions, update both the Dockerfile and workflow `PYTHON_VERSION`. Keep the Dagster Cloud CLI/runtime versions coordinated with the deployment action. If the upload output format changes, the tag extraction fails rather than deploying on an unintended base image.
+
+Reference: [Dagster+ custom Serverless base images](https://dagster.io/docs/deployment/dagster-plus/serverless/runtime-environment#use-a-different-base-image).
